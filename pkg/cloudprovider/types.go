@@ -142,6 +142,17 @@ type CloudProvider interface {
 	// do not support in-place reboot must return a *NodeRebootNotImplementedError, and a reboot that retrying can't
 	// make succeed (e.g. a missing permission) must return a *NodeRebootFailedError.
 	Reboot(ctx context.Context, nodeClaim *v1.NodeClaim, operationID string) error
+	// MigrateToReservation moves the running instance backing the NodeClaim into the capacity reservation of the given
+	// reserved offering in place, without stopping, replacing, or otherwise interrupting it. The offering is a Migratable
+	// reserved offering of the NodeClaim's instance type, in the NodeClaim's zone. MigrateToReservation returns once the
+	// provider has accepted the change, and must be idempotent: it must return nil if the instance already runs in the
+	// offering's reservation. Once the instance runs in the reservation, Get and List must report the NodeClaim with the
+	// offering's capacity type and reserved capacity labels. Providers that do not support moving running instances into
+	// capacity reservations must return a *ReservationMigrationNotImplementedError, and providers must return a
+	// *NodeClaimNotMigratableError when the NodeClaim's instance can never be moved into a capacity reservation in place.
+	// Providers must return a *ReservationMigrationRejectedError when they know the request wasn't applied, e.g.
+	// because the reservation is full. Any other error leaves it unknown whether the request was applied.
+	MigrateToReservation(ctx context.Context, nodeClaim *v1.NodeClaim, offering *Offering) error
 	// RepairPolicies returns the complete static set of provider-supported unhealthy-condition repair policies.
 	RepairPolicies() []RepairPolicy
 	// Name returns the CloudProvider implementation name.
@@ -672,6 +683,10 @@ type Offering struct {
 	// offering they can launch; an offering that leaves it false is never Launchable.
 	Compatible          bool
 	ReservationCapacity int
+	// Migratable reports whether a running on-demand instance of the offering's instance type, in the offering's zone, can
+	// be moved into the offering's capacity reservation in place with CloudProvider.MigrateToReservation. It is only
+	// meaningful for reserved offerings, and providers must leave it false for every other offering.
+	Migratable bool
 
 	// CapacityOverride specifies resource overrides for this offering's capacity.
 	// Values are merged with the instance type's base capacity — new keys are added,
@@ -894,6 +909,71 @@ func IsNodeRebootFailedError(err error) bool {
 	}
 	var rebootErr *NodeRebootFailedError
 	return errors.As(err, &rebootErr)
+}
+
+// ReservationMigrationNotImplementedError is returned by CloudProviders that do not support moving running instances
+// into capacity reservations. The reservation migration controller treats it as a terminal signal and stops migrating.
+type ReservationMigrationNotImplementedError struct{}
+
+func NewReservationMigrationNotImplementedError() *ReservationMigrationNotImplementedError {
+	return &ReservationMigrationNotImplementedError{}
+}
+
+func (e *ReservationMigrationNotImplementedError) Error() string {
+	return "reservation migration is not implemented by this cloud provider"
+}
+
+func IsReservationMigrationNotImplementedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var migrationErr *ReservationMigrationNotImplementedError
+	return errors.As(err, &migrationErr)
+}
+
+// NodeClaimNotMigratableError is returned by MigrateToReservation when the NodeClaim's instance can never be moved into
+// a capacity reservation in place, for example because of how it was launched. Karpenter doesn't attempt to migrate the
+// NodeClaim again.
+type NodeClaimNotMigratableError struct {
+	error
+}
+
+func NewNodeClaimNotMigratableError(err error) *NodeClaimNotMigratableError {
+	return &NodeClaimNotMigratableError{error: err}
+}
+
+func (e *NodeClaimNotMigratableError) Unwrap() error {
+	return e.error
+}
+
+func IsNodeClaimNotMigratableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var notMigratableErr *NodeClaimNotMigratableError
+	return errors.As(err, &notMigratableErr)
+}
+
+// ReservationMigrationRejectedError is returned by MigrateToReservation when the request was rejected and the instance
+// wasn't moved, e.g. because the reservation is full. Karpenter migrates the NodeClaim again later.
+type ReservationMigrationRejectedError struct {
+	error
+}
+
+func NewReservationMigrationRejectedError(err error) *ReservationMigrationRejectedError {
+	return &ReservationMigrationRejectedError{error: err}
+}
+
+func (e *ReservationMigrationRejectedError) Unwrap() error {
+	return e.error
+}
+
+func IsReservationMigrationRejectedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var rejectedErr *ReservationMigrationRejectedError
+	return errors.As(err, &rejectedErr)
 }
 
 // InsufficientCapacityError is an error type returned by CloudProviders when a launch fails due to a lack of capacity from NodeClaim requirements

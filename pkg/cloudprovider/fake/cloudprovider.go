@@ -65,6 +65,16 @@ type CloudProvider struct {
 	RebootCalls        []*v1.NodeClaim
 	RebootOperationIDs []string
 	GetCalls           []string
+	// NextMigrateToReservationErr is returned, and cleared, by the next MigrateToReservation call
+	NextMigrateToReservationErr error
+	// MigrateToReservationCalls records the NodeClaim and offering of every successful MigrateToReservation call
+	MigrateToReservationCalls []MigrateToReservationCall
+	// NextMigrateToReservationErrAfterMove is returned, and cleared, by the next MigrateToReservation call after it moved
+	// the instance, modeling a request that failed after the provider applied it
+	NextMigrateToReservationErrAfterMove error
+	// SkipMigrationRelabel leaves the NodeClaims returned by Get and List unchanged by MigrateToReservation, modeling a
+	// provider that hasn't observed the move yet
+	SkipMigrationRelabel bool
 
 	CreatedNodeClaims         map[string]*v1.NodeClaim
 	Drifted                   cloudprovider.DriftReason
@@ -99,6 +109,10 @@ func (c *CloudProvider) Reset() {
 	c.RebootCalls = nil
 	c.RebootOperationIDs = nil
 	c.GetCalls = nil
+	c.NextMigrateToReservationErr = nil
+	c.NextMigrateToReservationErrAfterMove = nil
+	c.MigrateToReservationCalls = nil
+	c.SkipMigrationRelabel = false
 	c.Drifted = ""
 	c.NodeClassGroupVersionKind = []schema.GroupVersionKind{
 		{
@@ -129,6 +143,45 @@ func (c *CloudProvider) Reboot(_ context.Context, nodeClaim *v1.NodeClaim, opera
 	}
 	c.RebootCalls = append(c.RebootCalls, nodeClaim)
 	c.RebootOperationIDs = append(c.RebootOperationIDs, operationID)
+	return nil
+}
+
+// MigrateToReservationCall records the arguments of a MigrateToReservation call
+type MigrateToReservationCall struct {
+	NodeClaim *v1.NodeClaim
+	Offering  *cloudprovider.Offering
+}
+
+// MigrateToReservation relabels the created NodeClaim with the offering's capacity type and reserved capacity labels,
+// modeling a provider that moved the instance into the offering's reservation.
+func (c *CloudProvider) MigrateToReservation(_ context.Context, nodeClaim *v1.NodeClaim, offering *cloudprovider.Offering) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.NextMigrateToReservationErr != nil {
+		temp := c.NextMigrateToReservationErr
+		c.NextMigrateToReservationErr = nil
+		return temp
+	}
+	created, ok := c.CreatedNodeClaims[nodeClaim.Status.ProviderID]
+	if !ok {
+		return cloudprovider.NewNodeClaimNotFoundError(serrors.Wrap(fmt.Errorf("no nodeclaim exists with id"), "id", nodeClaim.Status.ProviderID))
+	}
+	c.MigrateToReservationCalls = append(c.MigrateToReservationCalls, MigrateToReservationCall{NodeClaim: nodeClaim.DeepCopy(), Offering: offering})
+	if c.SkipMigrationRelabel {
+		return nil
+	}
+	created.Labels = lo.Assign(created.Labels)
+	for _, key := range append([]string{v1.CapacityTypeLabelKey, cloudprovider.ReservationIDLabel}, cloudprovider.ReservedCapacityLabels.UnsortedList()...) {
+		if req := offering.Requirements.Get(key); req.Operator() == corev1.NodeSelectorOpIn && req.Len() == 1 {
+			created.Labels[key] = req.Values()[0]
+		}
+	}
+	if c.NextMigrateToReservationErrAfterMove != nil {
+		temp := c.NextMigrateToReservationErrAfterMove
+		c.NextMigrateToReservationErrAfterMove = nil
+		return temp
+	}
 	return nil
 }
 

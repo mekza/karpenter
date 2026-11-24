@@ -66,6 +66,7 @@ type FeatureGates struct {
 	PodDeletionCostManagement *bool
 	PredictionEnabled         *bool
 	NodePoolDriftBackoff      *bool
+	ReservedCapacityMigration *bool
 }
 
 func Options(overrides ...OptionsFields) *options.Options {
@@ -110,6 +111,7 @@ func Options(overrides ...OptionsFields) *options.Options {
 			PodDeletionCostManagement: lo.FromPtrOr(opts.FeatureGates.PodDeletionCostManagement, options.PodDeletionCostManagementFeatureGate.Default),
 			PredictionEnabled:         lo.FromPtrOr(opts.FeatureGates.PredictionEnabled, options.PredictionEnabledFeatureGate.Default),
 			NodePoolDriftBackoff:      lo.FromPtrOr(opts.FeatureGates.NodePoolDriftBackoff, options.NodePoolDriftBackoffFeatureGate.Default),
+			ReservedCapacityMigration: lo.FromPtrOr(opts.FeatureGates.ReservedCapacityMigration, options.ReservedCapacityMigrationFeatureGate.Default),
 		},
 	}
 }

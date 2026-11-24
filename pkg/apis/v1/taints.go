@@ -27,6 +27,8 @@ const (
 	DisruptedTaintKey    = apis.Group + "/disrupted"
 	UnregisteredTaintKey = apis.Group + "/unregistered"
 	RebootingTaintKey    = apis.Group + "/rebooting"
+	// ReservationMigrationTaintKey is the key of the taint fencing a node while it moves into a capacity reservation.
+	ReservationMigrationTaintKey = apis.Group + "/reservation-migration"
 )
 
 var (
@@ -43,6 +45,12 @@ var (
 	// `RebootingNoScheduleTaint` fences new scheduling until the node boots with a new bootID.
 	RebootingNoScheduleTaint = v1.Taint{
 		Key:    RebootingTaintKey,
+		Effect: v1.TaintEffectNoSchedule,
+	}
+	// ReservationMigrationNoScheduleTaint fences new scheduling while a node's running on-demand instance moves into a
+	// capacity reservation, so no pod binds against the on-demand labels Karpenter is about to replace.
+	ReservationMigrationNoScheduleTaint = v1.Taint{
+		Key:    ReservationMigrationTaintKey,
 		Effect: v1.TaintEffectNoSchedule,
 	}
 )

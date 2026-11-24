@@ -54,6 +54,7 @@ import (
 	nodeclaimlifecycle "sigs.k8s.io/karpenter/pkg/controllers/nodeclaim/lifecycle"
 	"sigs.k8s.io/karpenter/pkg/controllers/nodeclaim/podevents"
 	nodeclaimreboot "sigs.k8s.io/karpenter/pkg/controllers/nodeclaim/reboot"
+	nodeclaimreservationmigration "sigs.k8s.io/karpenter/pkg/controllers/nodeclaim/reservationmigration"
 	"sigs.k8s.io/karpenter/pkg/controllers/nodeoverlay"
 	nodepoolcounter "sigs.k8s.io/karpenter/pkg/controllers/nodepool/counter"
 	nodepoolhash "sigs.k8s.io/karpenter/pkg/controllers/nodepool/hash"
@@ -184,6 +185,9 @@ func NewControllers(
 	// The reboot controller only acts on NodeClaims with a committed reboot, so it always runs: a reboot already in flight
 	// finishes even if node repair is disabled or the provider stops selecting reboot.
 	controllers = append(controllers, nodeclaimreboot.NewController(clock, kubeClient, cloudProvider, terminator.NewTerminator(clock, kubeClient, evictionQueue, recorder), recorder))
+	// The reservation migration controller only starts migrations with the ReservedCapacityMigration feature gate, but it
+	// always runs so a migration already in flight finishes, and its fence is lifted, after the gate is disabled.
+	controllers = append(controllers, nodeclaimreservationmigration.NewController(clock, kubeClient, cluster, cloudProvider, recorder))
 	// The repair disruption method is registered in the disruption controller. --legacy-node-repair instead runs the
 	// legacy node.health controller.
 	if len(cloudProvider.RepairPolicies()) != 0 && options.FromContext(ctx).FeatureGates.NodeRepair && options.FromContext(ctx).LegacyNodeRepair {

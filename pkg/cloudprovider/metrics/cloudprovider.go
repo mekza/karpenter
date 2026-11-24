@@ -165,6 +165,16 @@ func (d *decorator) Reboot(ctx context.Context, nodeClaim *v1.NodeClaim, operati
 	return err
 }
 
+func (d *decorator) MigrateToReservation(ctx context.Context, nodeClaim *v1.NodeClaim, offering *cloudprovider.Offering) error {
+	method := "MigrateToReservation"
+	defer metrics.Measure(MethodDuration, getLabelsMapForDuration(ctx, d, method))()
+	err := d.CloudProvider.MigrateToReservation(ctx, nodeClaim, offering)
+	if err != nil {
+		ErrorsTotal.Inc(getLabelsMapForError(ctx, d, method, nodePoolNameForNodeClaim(nodeClaim), err))
+	}
+	return err
+}
+
 func (d *decorator) Get(ctx context.Context, id string) (*v1.NodeClaim, error) {
 	method := "Get"
 	defer metrics.Measure(MethodDuration, getLabelsMapForDuration(ctx, d, method))()

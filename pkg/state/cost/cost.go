@@ -165,8 +165,17 @@ func (cc *ClusterCost) internalUpdateOfferings(np *v1.NodePool, instanceTypes []
 func (cc *ClusterCost) UpdateNodeClaim(ctx context.Context, nodeClaim *v1.NodeClaim) error {
 	cc.Lock()
 	defer cc.Unlock()
-	if _, exists := cc.nodeClaimMap[client.ObjectKeyFromObject(nodeClaim)]; exists {
-		return nil
+	if metadata, exists := cc.nodeClaimMap[client.ObjectKeyFromObject(nodeClaim)]; exists {
+		// A tracked NodeClaim's offering changes when it is relabeled in place, e.g. when it moves into or out of a
+		// capacity reservation. Re-track it under its current offering; otherwise there is nothing to update.
+		if !cc.internalOfferingChanged(nodeClaim, metadata) {
+			return nil
+		}
+		if err := cc.internalRemoveOffering(metadata.NodePoolName, metadata.NodeClaimKey); err != nil {
+			CostTrackingErrorsTotal.Inc(map[string]string{metrics.NodePoolLabel: metadata.NodePoolName})
+			return serrors.Wrap(err, "nodeclaim", klog.KObj(nodeClaim), "nodepool", metadata.NodePoolName)
+		}
+		delete(cc.nodeClaimMap, client.ObjectKeyFromObject(nodeClaim))
 	}
 
 	failed := false
@@ -205,6 +214,22 @@ func (cc *ClusterCost) UpdateNodeClaim(ctx context.Context, nodeClaim *v1.NodeCl
 		NodeClaimKey: offeringKey,
 	}
 	return nil
+}
+
+// internalOfferingChanged returns whether a tracked NodeClaim that is priced by its offering now has labels for a
+// different offering.
+func (cc *ClusterCost) internalOfferingChanged(nodeClaim *v1.NodeClaim, metadata NodeClaimMetaData) bool {
+	if nodeClaimMissingLabels(*nodeClaim) {
+		return false
+	}
+	if npc, ok := cc.npCostMap[metadata.NodePoolName]; ok && lo.HasKey(npc.fixedPrices, client.ObjectKeyFromObject(nodeClaim)) {
+		return false
+	}
+	return metadata.NodeClaimKey != OfferingKey{
+		CapacityType: nodeClaim.Labels[v1.CapacityTypeLabelKey],
+		Zone:         nodeClaim.Labels[corev1.LabelTopologyZone],
+		InstanceName: nodeClaim.Labels[corev1.LabelInstanceTypeStable],
+	}
 }
 
 // DeleteNodeClaim removes a NodeClaim from cost tracking. If the NodeClaim

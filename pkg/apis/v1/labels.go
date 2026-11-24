@@ -63,6 +63,7 @@ const (
 	RebootTerminationGracePeriodAnnotationKey  = apis.Group + "/reboot-termination-grace-period"
 	DRADriversAnnotationKey                    = apis.Group + "/requested-dra-drivers"
 	DisruptionCostAnnotationKey                = apis.Group + "/disruption-cost"
+	ReservationMigrationTargetAnnotationKey    = apis.Group + "/reservation-migration-target"
 )
 
 var (
@@ -182,6 +183,16 @@ var (
 			"controller.kubernetes.io/pod-deletion-cost itself.",
 		Stage: docs.Alpha,
 	}
+	ReservationMigrationTargetAnnotation = wellknown.Annotation{
+		Name:    ReservationMigrationTargetAnnotationKey,
+		Example: "cr-0123456789abcdef0",
+		UsedOn:  []runtime.Object{&NodeClaim{}},
+		Help: "Karpenter sets this to the ID of the capacity reservation it is moving the NodeClaim's running " +
+			"on-demand instance into. While set, the Node stays fenced with the karpenter.sh/reservation-migration " +
+			"taint. Removed when the NodeClaim and Node are relabeled as reserved, or the move is abandoned.",
+		Stage:        docs.Alpha,
+		InternalOnly: true,
+	}
 )
 
 // KarpenterAnnotations are the well known annotations Karpenter reads or writes.
@@ -197,6 +208,7 @@ var KarpenterAnnotations = []wellknown.Annotation{
 	RebootTerminationGracePeriodAnnotation,
 	DRADriversAnnotation,
 	DisruptionCostAnnotation,
+	ReservationMigrationTargetAnnotation,
 }
 
 // Karpenter specific finalizers

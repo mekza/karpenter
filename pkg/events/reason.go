@@ -41,6 +41,13 @@ const (
 	RebootObserved = "RebootObserved"
 	RebootFailed   = "RebootFailed"
 
+	// nodeclaim/reservationmigration
+	ReservationMigrated        = "ReservationMigrated"
+	ReservationMigrationFailed = "ReservationMigrationFailed"
+	// ReservationMigrationMismatched is emitted when a node is relabeled for a reservation other than the one planned,
+	// or its labels no longer suit every pod bound to it
+	ReservationMigrationMismatched = "ReservationMigrationMismatched"
+
 	// node/termination/terminator
 	Disrupted                      = "Disrupted"
 	Evicted                        = "Evicted"

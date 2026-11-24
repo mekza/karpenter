@@ -101,6 +101,31 @@ func IgnoreNodeDoNotDisruptError(err error) error {
 	return err
 }
 
+// NodeMigratingError is returned when a node is being moved into a capacity reservation in place. Repair ignores it, so
+// a broken node isn't stranded by a migration; terminating the node ends the migration.
+type NodeMigratingError struct {
+	error
+}
+
+func NewNodeMigratingError(err error) *NodeMigratingError {
+	return &NodeMigratingError{error: err}
+}
+
+func IsNodeMigratingError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var nodeMigratingError *NodeMigratingError
+	return stderrors.As(err, &nodeMigratingError)
+}
+
+func IgnoreNodeMigratingError(err error) error {
+	if IsNodeMigratingError(err) {
+		return nil
+	}
+	return err
+}
+
 // NodeUninitializedError is returned when a registered node hasn't initialized. Repair ignores it, since a node that
 // never initializes is otherwise only replaced by a human.
 type NodeUninitializedError struct {
@@ -315,6 +340,11 @@ func (in *StateNode) ValidateNodeDisruptable(clk clock.Clock) error {
 	if _, ok := in.Labels()[v1.NodePoolLabelKey]; !ok {
 		return serrors.Wrap(fmt.Errorf("node doesn't have required label"), "label", v1.NodePoolLabelKey)
 	}
+	// A node moving into a capacity reservation is fenced and about to be relabeled, so decisions made against its
+	// current labels would be stale once it lands. Checked last, since repair ignores it.
+	if in.ReservationMigrationInProgress() {
+		return NewNodeMigratingError(fmt.Errorf("node is migrating into a capacity reservation"))
+	}
 	return nil
 }
 
@@ -410,6 +440,17 @@ func (in *StateNode) RebootReinitializing() bool {
 	}
 	cond := in.NodeClaim.StatusConditions().Get(v1.ConditionTypeRebooting)
 	return cond != nil && cond.IsFalse() && cond.Reason == v1.RebootReasonSucceeded
+}
+
+// ReservationMigrationInProgress returns true if the node is being moved into a capacity reservation in place: its Node
+// carries the reservation migration taint, or its NodeClaim has committed to a target reservation.
+func (in *StateNode) ReservationMigrationInProgress() bool {
+	if in.NodeClaim != nil && in.NodeClaim.Annotations[v1.ReservationMigrationTargetAnnotationKey] != "" {
+		return true
+	}
+	return in.Node != nil && lo.ContainsBy(in.Node.Spec.Taints, func(t corev1.Taint) bool {
+		return t.MatchTaint(&v1.ReservationMigrationNoScheduleTaint)
+	})
 }
 
 func (in *StateNode) Taints() []corev1.Taint {

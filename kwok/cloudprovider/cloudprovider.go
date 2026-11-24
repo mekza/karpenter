@@ -233,6 +233,11 @@ func (c CloudProvider) Reboot(ctx context.Context, nodeClaim *v1.NodeClaim, oper
 	return nil
 }
 
+func (c CloudProvider) MigrateToReservation(context.Context, *v1.NodeClaim, *cloudprovider.Offering) error {
+	// KWOK doesn't model capacity reservations a running instance can be moved into.
+	return cloudprovider.NewReservationMigrationNotImplementedError()
+}
+
 func (c CloudProvider) Name() string {
 	return "kwok"
 }

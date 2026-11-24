@@ -72,6 +72,7 @@ type FeatureGates struct {
 	PodDeletionCostManagement bool
 	PredictionEnabled         bool
 	NodePoolDriftBackoff      bool
+	ReservedCapacityMigration bool
 }
 
 // FeatureGate is the source-of-truth description of a feature gate. Declaring gates as FeatureGates keeps each gate's
@@ -165,6 +166,13 @@ var (
 		Help: "Karpenter backs off drift disruption for a NodePool after its drift replacements fail, so a NodePool " +
 			"that can't launch replacements doesn't keep cycling drifted nodes.",
 	}
+	ReservedCapacityMigrationFeatureGate = FeatureGate{
+		Name:    "ReservedCapacityMigration",
+		Default: false,
+		Stage:   docs.Alpha,
+		Help: "Karpenter moves running on-demand nodes into compatible capacity reservations with free capacity in " +
+			"place, without replacing them, when the cloud provider supports it. Requires ReservedCapacity.",
+	}
 )
 
 // KarpenterFeatureGates are the feature gates Karpenter supports, in the order --feature-gates lists them.
@@ -180,6 +188,7 @@ var KarpenterFeatureGates = []FeatureGate{
 	PodDeletionCostManagementFeatureGate,
 	PredictionEnabledFeatureGate,
 	NodePoolDriftBackoffFeatureGate,
+	ReservedCapacityMigrationFeatureGate,
 }
 
 // Options contains all CLI flags / env vars for karpenter-core. It adheres to the options.Injectable interface.
@@ -308,6 +317,7 @@ func DefaultFeatureGates() FeatureGates {
 		PodDeletionCostManagement: PodDeletionCostManagementFeatureGate.Default,
 		PredictionEnabled:         PredictionEnabledFeatureGate.Default,
 		NodePoolDriftBackoff:      NodePoolDriftBackoffFeatureGate.Default,
+		ReservedCapacityMigration: ReservedCapacityMigrationFeatureGate.Default,
 	}
 }
 
@@ -332,6 +342,7 @@ func ParseFeatureGates(gateStr string) (FeatureGates, error) {
 		PodDeletionCostManagementFeatureGate.Name: &gates.PodDeletionCostManagement,
 		PredictionEnabledFeatureGate.Name:         &gates.PredictionEnabled,
 		NodePoolDriftBackoffFeatureGate.Name:      &gates.NodePoolDriftBackoff,
+		ReservedCapacityMigrationFeatureGate.Name: &gates.ReservedCapacityMigration,
 	} {
 		if val, ok := gateMap[name]; ok {
 			*gate = val

@@ -211,6 +211,25 @@ var _ = Describe("ClusterCost", func() {
 		})
 	})
 
+	Context("Relabeled NodeClaims", func() {
+		It("should re-track a NodeClaim under its new offering when its capacity type changes in place", func() {
+			nodeClaim := createTestNodeClaim(testNodePool, testInstanceType.Name, onDemandOffering.CapacityType(), onDemandOffering.Zone())
+			Expect(clusterCost.UpdateNodeClaim(ctx, nodeClaim)).To(Succeed())
+			Expect(clusterCost.GetNodepoolCost(testNodePool)).To(BeNumerically("~", 3.00, 0.001))
+
+			nodeClaim.Labels[v1.CapacityTypeLabelKey] = v1.CapacityTypeSpot
+			Expect(clusterCost.UpdateNodeClaim(ctx, nodeClaim)).To(Succeed())
+			Expect(clusterCost.GetNodepoolCost(testNodePool)).To(BeNumerically("~", 1.50, 0.001))
+			Expect(clusterCost.GetClusterCost()).To(BeNumerically("~", 1.50, 0.001))
+
+			// Repeated updates with the same labels don't change the cost, and deleting removes the new offering
+			Expect(clusterCost.UpdateNodeClaim(ctx, nodeClaim)).To(Succeed())
+			Expect(clusterCost.GetNodepoolCost(testNodePool)).To(BeNumerically("~", 1.50, 0.001))
+			Expect(clusterCost.DeleteNodeClaim(ctx, client.ObjectKeyFromObject(nodeClaim))).To(Succeed())
+			Expect(clusterCost.GetNodepoolCost(testNodePool)).To(BeNumerically("~", 0.0, 0.001))
+		})
+	})
+
 	Context("DeleteNodeClaim", func() {
 		It("should update costs correctly for single spot offering from nodepool with one offering", func() {
 			// Setup: Add one spot offering to remove
