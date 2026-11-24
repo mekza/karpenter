@@ -444,6 +444,11 @@ var _ = Describe("ReservationMigration", func() {
 		reconcile([]*corev1.Node{node}, []*v1.NodeClaim{nodeClaim})
 		expectFenced(node, false)
 		expectOnDemand(nodeClaim, node)
+
+		// The provider may still move the instance, e.g. once a full reservation frees up, so it isn't requested again
+		env.Clock.Step(reservationmigration.FailureBackoff)
+		reconcile([]*corev1.Node{node}, []*v1.NodeClaim{nodeClaim})
+		expectFenced(node, false)
 	})
 	It("should abandon a committed migration if an incompatible pod binds before the request is accepted", func() {
 		reconcile([]*corev1.Node{node}, []*v1.NodeClaim{nodeClaim})

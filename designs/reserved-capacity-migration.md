@@ -102,7 +102,9 @@ disabled.
   offering, which also covers reserved nodes demoted to on-demand.
 - **Provider label sync.** Providers that sync capacity type labels from the instance, like the AWS provider's demotion
   of nodes whose reservation expired, must not undo a relabel they raced with, and should skip NodeClaims with the
-  migration annotation.
+  migration annotation. A provider whose move can complete after Karpenter gave up on it must promote the NodeClaim
+  itself: on EC2, targeting a reservation that filled up since its capacity was checked is accepted, can't be undone,
+  and the instance joins the reservation once capacity frees up, so the AWS provider promotes such NodeClaims.
 - **Consolidation.** After migrating, the node is priced as reserved, so consolidation won't replace it with reserved
   capacity. Consolidation can still win the race for a node, which falls back to today's behavior.
 - **Provisioning.** The migration consumes reservation capacity the provider tracks (the AWS provider decrements its

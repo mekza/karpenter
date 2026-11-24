@@ -367,6 +367,8 @@ func (c *Controller) reconcileCommitted(ctx context.Context, pass *pass, n *stat
 	_, accepted := c.acceptedAt[uid]
 	committedFor := c.clock.Since(c.committedAt[uid])
 	if accepted && committedFor > AbandonTimeout {
+		// The provider may still move the instance later, so don't request it again.
+		c.notMigratable.Insert(uid)
 		log.FromContext(ctx).Info("abandoning migration into capacity reservation, cloud provider never reported the instance in it")
 		c.recorder.Publish(MigrationFailed(n.NodeClaim, reservationID, fmt.Sprintf("cloud provider didn't report the instance in the reservation within %s", AbandonTimeout)))
 		return resyncInterval, c.abandon(ctx, n)
